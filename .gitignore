@@ -43,5 +43,4 @@ playground.xcworkspace
 *.env
 
 # Project-specific ignores
-index.html
 /MIGRATION_IOS.md
