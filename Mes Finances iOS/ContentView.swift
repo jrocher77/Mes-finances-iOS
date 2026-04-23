@@ -11,7 +11,7 @@ import WebKit
 struct ContentView: View {
     var body: some View {
         WebAppView()
-            .ignoresSafeArea()
+            .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 
@@ -21,6 +21,9 @@ private struct WebAppView: UIViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         loadLocalWebApp(in: webView)
         return webView
     }
