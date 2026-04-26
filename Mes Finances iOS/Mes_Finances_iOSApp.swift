@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct Mes_Finances_iOSApp: App {
+    init() {
+        FirebaseBootstrap.configureIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

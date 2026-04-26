@@ -139,8 +139,8 @@
     }
 
     :root { --radius: 16px; --radius-sm: 10px; --text-sub: rgba(240,236,228,0.25); --gold: #c9a84c; }
-    html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }
-    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; transition: background 0.3s, color 0.3s; position: fixed; inset: 0; width: 100%; }
+    html, body, #root { height: 100%; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; transition: background 0.3s, color 0.3s; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -157,6 +157,61 @@
     .slide-in { animation: slideIn 0.3s ease both; }
     .scale-in { animation: scaleIn 0.25s ease both; }
     .spinner  { animation: spin 0.9s linear infinite; }
+
+    .form-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      height: 100vh;
+      height: 100dvh;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      overflow: hidden;
+      padding-top: max(8px, env(safe-area-inset-top));
+    }
+
+    .form-modal-sheet {
+      width: 100%;
+      max-width: 480px;
+      max-height: calc(100vh - max(8px, env(safe-area-inset-top)));
+      max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 24px 24px 0 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding: 0 0 max(24px, calc(24px + env(safe-area-inset-bottom)));
+    }
+
+    .form-modal-header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    @media (max-width: 520px) {
+      .form-modal-overlay {
+        align-items: stretch;
+        padding-top: max(6px, env(safe-area-inset-top));
+      }
+
+      .form-modal-sheet {
+        max-width: none;
+        max-height: calc(100dvh - max(6px, env(safe-area-inset-top)));
+        margin-top: auto;
+        border-left: none;
+        border-right: none;
+        border-radius: 18px 18px 0 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -176,6 +231,7 @@ function nowMKey() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
+function isExternalStatTx(t) { return !t._transferFrom && !t._virementId; }
 function isEven(mk){ return parseInt(mk.split("-")[1],10) % 2 === 0; }
 function dBack(n)  { const d = new Date(); d.setDate(d.getDate()-n); return d.toISOString().split("T")[0]; }
 
@@ -1047,16 +1103,20 @@ function useStore(uid, email) {
         const cardTxs = tx.filter(t => mKey(t.date) === prevMk && t.accountId === acc.id && t.isCard);
         if (regular.length === 0 && cardTxs.length === 0) return;
 
-        const income  = regular.filter(t => t.type === "income").reduce((s,t) => s+t.amount, 0);
-        const expense = regular.filter(t => t.type === "expense").reduce((s,t) => s+t.amount, 0)
-                      + cardTxs.reduce((s,t) => s+(t.type==="expense"?t.amount:-t.amount), 0);
-        const total   = regular.length + cardTxs.length;
-        const pointed = [...regular, ...cardTxs].filter(t => t.pointed).length;
+        const statRegular = regular.filter(isExternalStatTx);
+        const statCardTxs = cardTxs.filter(isExternalStatTx);
+        const income  = statRegular.filter(t => t.type === "income").reduce((s,t) => s+t.amount, 0);
+        const expense = statRegular.filter(t => t.type === "expense").reduce((s,t) => s+t.amount, 0)
+                      + statCardTxs.reduce((s,t) => s+(t.type==="expense"?t.amount:-t.amount), 0);
+        const balance = income - expense;
+        const statTxs = [...statRegular, ...statCardTxs];
+        const total   = statTxs.length;
+        const pointed = statTxs.filter(t => t.pointed).length;
         const dateKey = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(currentDay)}`;
         addCheckingSnapshot({
           date: dateKey, monthKey: prevMk,
           accountId: acc.id, accountName: acc.name,
-          income, expense, balance: income - expense,
+          income, expense, balance,
           total, pointed, auto: true,
         });
         dbg(`📊 Auto-snapshot checking — ${acc.name} / ${prevMk} (pris le ${currentDay})`);
@@ -1226,7 +1286,7 @@ function useStore(uid, email) {
 // mélangées — non lisible directement, reconstruit à l'exécution uniquement
 // après validation du mot magique.
 const _dp = () => { const p=[[0,68],[3,111],[7,52],[2,109],[1,101],[6,51],[4,49],[5,50],[8,33]]; return p.sort((a,b)=>a[0]-b[0]).map(x=>String.fromCharCode(x[1])).join(""); };
-const DEMO_MAGIC_HASH = "eef0c396c1a2c19d3119217a759fad0d6ab57465cb9241e80277378bfd970236";
+const DEMO_MAGIC_HASH = "4c3a8520131aa73f453d04a72434d92727d8d002465ac5716bdf0dd02d971951";
 
 async function hashString(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
@@ -1502,6 +1562,7 @@ function CleanupBlockedToast({ reasons, onClose }) {
 function App() {
   const [user,       setUser]    = useState(undefined); // undefined = checking, null = not logged in
   const [tab,        setTab]     = useState("dashboard");
+  const previousUserEmailRef = useRef(null);
   const dashboardResetRef = useRef(null);
   const scrollRef = useRef(null);
   const [showForm,   setForm]    = useState(false);
@@ -1610,6 +1671,18 @@ function App() {
     try { localStorage.setItem("budget_account_row_size", accountRowSize); } catch { /* ignore */ }
   }, [accountRowSize]);
 
+  useEffect(() => {
+    const currentEmail = user?.email || null;
+    const previousEmail = previousUserEmailRef.current;
+
+    if (currentEmail && currentEmail !== previousEmail) {
+      setTab("dashboard");
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    }
+
+    previousUserEmailRef.current = currentEmail;
+  }, [user?.email]);
+
   if (user === undefined) return <LoadingScreen />;
   if (user === null)      return (
     <ThemeCtx.Provider value={{ theme, toggle:()=>setTheme(t=>t==="dark"?"light":"dark") }}>
@@ -1626,7 +1699,7 @@ function App() {
 
   return (
     <ThemeCtx.Provider value={{ theme, toggle:()=>setTheme(t=>t==="dark"?"light":"dark") }}>
-      <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", width:"100%", maxWidth:480, margin:"0 auto", background:"var(--bg)", transition:"background 0.3s", overflow:"hidden" }}>
+      <div style={{ display:"flex", flexDirection:"column", height:"100vh", maxWidth:480, margin:"0 auto", background:"var(--bg)", transition:"background 0.3s" }}>
         {store.isDemo && (
           <div style={{ background:"linear-gradient(90deg,#c9a84c,#e8c96a)", padding:"8px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, zIndex:50 }}>
             <span style={{ fontSize:14 }}>👀</span>
@@ -1647,7 +1720,7 @@ function App() {
             <button onClick={store.clearSaveError} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:6, color:"#fff", fontSize:12, fontWeight:700, padding:"4px 10px", cursor:"pointer" }}>&#x2715;</button>
           </div>
         )}
-        <div ref={scrollRef} data-app-scroll="true" style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch", overscrollBehavior:"contain", paddingBottom:"calc(88px + env(safe-area-inset-bottom, 0px))" }}>
+        <div ref={scrollRef} style={{ flex:1, overflowY:"auto", paddingBottom:80 }}>
           {tab==="dashboard"     && <Dashboard    store={store} onAdd={handleOpenForm} onGoSavings={()=>setTab("savingsStats")} onGoCheckingStats={()=>setTab("checkingStats")} onResetRef={dashboardResetRef} accountRowSize={accountRowSize} />}
           {tab==="transactions"  && <Transactions store={store} onAdd={handleOpenForm} />}
           {tab==="bourse"        && <BoursePage   store={store} user={user} />}
@@ -2068,8 +2141,7 @@ function BoursePage({ store, user }) {
   const PTR_THRESHOLD = 64;
 
   const onTouchStart = React.useCallback(e => {
-    const appScroll = document.querySelector("[data-app-scroll='true']");
-    if ((appScroll?.scrollTop || 0) === 0) {
+    if (scrollRef.current?.scrollTop === 0) {
       ptrStartY.current = e.touches[0].clientY;
       ptrActive.current = true;
     }
@@ -2096,7 +2168,7 @@ function BoursePage({ store, user }) {
   return (
     <div
       ref={scrollRef}
-      style={{ display:"flex", flexDirection:"column", minHeight:"100%", overflow:"visible" }}
+      style={{ display:"flex", flexDirection:"column", height:"100%", overflowY:"auto", paddingBottom:80 }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -2335,7 +2407,7 @@ function TabBar({ tab, setTab, onDashboardClick }) {
     { id:"settings",     label:"Réglages"   },
   ];
   return (
-    <div style={{ position:"absolute", bottom:0, left:0, right:0, width:"100%", background:"var(--tab-bg)", backdropFilter:"blur(20px)", borderTop:"1px solid var(--border)", display:"flex", justifyContent:"space-around", padding:"10px 0 calc(16px + env(safe-area-inset-bottom, 0px))", zIndex:100 }}>
+    <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, background:"var(--tab-bg)", backdropFilter:"blur(20px)", borderTop:"1px solid var(--border)", display:"flex", justifyContent:"space-around", padding:"10px 0 16px", zIndex:100 }}>
       {tabs.map(t => (
         <button key={t.id} onClick={()=>{ if(t.id==="dashboard" && tab==="dashboard" && onDashboardClick) onDashboardClick(); setTab(t.id); }} className={`tabbar-btn${tab===t.id ? " active" : ""}`} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3, background:"none", border:"none", padding:"4px 16px" }}>
           {TAB_ICONS[t.id]}
@@ -2355,7 +2427,7 @@ function PageHeader({ title, onAdd, children }) {
         background:"var(--header-bg)",
         backdropFilter:"blur(20px)",
         borderBottom:"1px solid var(--border)",
-        padding: children ? "calc(8px + env(safe-area-inset-top, 0px)) 16px 8px" : "calc(8px + env(safe-area-inset-top, 0px)) 16px 8px",
+        padding: children ? "8px 16px 8px" : "8px 16px",
         display:"flex", alignItems:"center", gap:8,
       }}>
         <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:18, letterSpacing:"-0.02em", color:"var(--header-text)", flex:1, margin:0 }}>{title}</p>
@@ -2760,7 +2832,7 @@ function BenefitPage({ store, account, onClose }) {
   return (
     <div>
         {/* Header */}
-        <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", alignItems:"center", gap:12, padding:"calc(8px + env(safe-area-inset-top, 0px)) 16px 8px", borderBottom:"1px solid var(--border)", background:"var(--header-bg)", backdropFilter:"blur(20px)", flexShrink:0 }}>
+        <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", alignItems:"center", gap:12, padding:"8px 16px", borderBottom:"1px solid var(--border)", background:"var(--header-bg)", backdropFilter:"blur(20px)", flexShrink:0 }}>
           <button onClick={onClose} style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, padding:"4px 10px", height:30, color:"var(--header-muted)", fontSize:13, fontWeight:500, display:"flex", alignItems:"center", justifyContent:"center", gap:4, flexShrink:0 }}>← Retour</button>
           <span style={{ fontSize:20 }}>🎫</span>
           <div style={S.flex1}>
@@ -3337,7 +3409,7 @@ function Dashboard({ store, onAdd, onGoSavings, onGoCheckingStats, onResetRef, a
       {!benefitAccount && <>
       {selectedAccountId==="all"
         ? <PageHeader title="Mes Finances" />
-        : <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", alignItems:"center", gap:12, padding:"calc(8px + env(safe-area-inset-top, 0px)) 16px 8px", borderBottom:"1px solid var(--border)", background:"var(--header-bg)", backdropFilter:"blur(20px)" }}>
+        : <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", alignItems:"center", gap:12, padding:"8px 16px", borderBottom:"1px solid var(--border)", background:"var(--header-bg)", backdropFilter:"blur(20px)" }}>
             <button onClick={()=>setSelectedAccount("all")} style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, padding:"4px 10px", height:30, color:"var(--header-muted)", fontSize:13, fontWeight:500, display:"flex", alignItems:"center", justifyContent:"center", gap:4, flexShrink:0 }}>← Retour</button>
             <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:18, letterSpacing:"-0.02em", color:"var(--header-text)", flex:1, margin:0 }}>
               {store.accounts.find(a=>a.id===selectedAccountId)?.name || "Compte"}
@@ -3413,21 +3485,6 @@ function Dashboard({ store, onAdd, onGoSavings, onGoCheckingStats, onResetRef, a
         })()}
 
         {/* All accounts breakdown */}
-        {/* Income / Expense — affiché AVANT le tableau des comptes en vue globale */}
-        {selectedAccountId==="all" && (
-          <div className="fade-up" style={S.grid2col10}>
-            {[{label:"Revenus",val:income,color:"var(--green)",bg:"var(--green-dim)",icon:"↓"},{label:"Dépenses",val:expns,color:"var(--red)",bg:"var(--red-dim)",icon:"↑"}].map(c=>(
-              <div key={c.label} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", padding:"16px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                  <span style={{ width:26,height:26, borderRadius:8, background:c.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:c.color, fontWeight:700 }}>{c.icon}</span>
-                  <span style={{ fontSize:12, color:"var(--text-muted)", fontWeight:500 }}>{c.label}</span>
-                </div>
-                <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, color:c.color }}>{fmtEur(c.val)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
         {selectedAccountId==="all" && (accountBalances.checking.length>0||accountBalances.savings.length>0) && (
           <div className="fade-up" style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:"var(--radius)", padding:16, animationDelay:"0.05s" }}>
             {accountBalances.checking.length>0 && <>
@@ -4737,6 +4794,17 @@ function FormModal({ store, account, transaction, onClose, isCardTransaction=fal
   // Couleur du montant selon le mode
   const amountColor = isTransfer ? "var(--text)" : mode === "expense" ? "var(--red)" : "var(--green)";
 
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
+
   // ── Bandeau soldes prévisionnels (réutilisé à deux endroits selon le mode) ──
   const forecastBand = amountValid && srcForecast !== null && (
     isTransfer ? (
@@ -4791,15 +4859,17 @@ function FormModal({ store, account, transaction, onClose, isCardTransaction=fal
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(6px)", display:"flex", alignItems:"flex-end" }}
+    <div className="form-modal-overlay"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="scale-in" style={{ width:"100%", maxWidth:480, margin:"0 auto", background:"var(--surface)", borderRadius:"24px 24px 0 0", border:"1px solid var(--border)", borderBottom:"none", padding:"0 0 32px", maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 0" }}>
-          <div style={{ width:36,height:4, borderRadius:2, background:"var(--border)" }} />
-        </div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 20px 16px" }}>
-          <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:22 }}>{isEditing ? "Modifier" : "Nouvelle transaction"}</p>
-          <button onClick={onClose} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:8, width:32,height:32, color:"var(--text-muted)", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+      <div className="form-modal-sheet scale-in">
+        <div className="form-modal-header">
+          <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 0" }}>
+            <div style={{ width:36,height:4, borderRadius:2, background:"var(--border)" }} />
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 20px 16px" }}>
+            <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:22 }}>{isEditing ? "Modifier" : "Nouvelle transaction"}</p>
+            <button onClick={onClose} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:8, width:32,height:32, color:"var(--text-muted)", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+          </div>
         </div>
         <div style={{ padding:"0 20px", display:"flex", flexDirection:"column", gap:14 }}>
 
@@ -5001,7 +5071,7 @@ function CheckingBarChart({ months }) {
           {[
             { label:"Revenus",  val:tooltip.income,  color:"#4caf82" },
             { label:"Dépenses", val:tooltip.expense, color:"#e05c5c" },
-            { label:"Solde",    val:tooltip.balance, color: tooltip.balance >= 0 ? "#c9a84c" : "#e05c5c" },
+            { label:"Résultat", val:tooltip.balance, color: tooltip.balance >= 0 ? "#c9a84c" : "#e05c5c" },
           ].map(c => (
             <div key={c.label}>
               <p style={{ fontSize:9, color:"var(--text-sub)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>{c.label}</p>
@@ -5031,12 +5101,16 @@ function CheckingStats({ store, onBack }) {
     return accounts.map(acc => {
       const regular = store.transactions.filter(t => mKey(t.date) === nowMk && t.accountId === acc.id && !t.isCard);
       const cardTxs = store.transactions.filter(t => mKey(t.date) === nowMk && t.accountId === acc.id && t.isCard);
-      const income  = regular.filter(t => t.type === "income").reduce((s,t) => s+t.amount, 0);
-      const expense = regular.filter(t => t.type === "expense").reduce((s,t) => s+t.amount, 0)
-                    + cardTxs.reduce((s,t) => s+(t.type==="expense"?t.amount:-t.amount), 0);
-      const total   = regular.length + cardTxs.length;
-      const pointed = [...regular, ...cardTxs].filter(t => t.pointed).length;
-      return { accountId: acc.id, accountName: acc.name, income, expense, balance: income-expense, total, pointed };
+      const statRegular = regular.filter(isExternalStatTx);
+      const statCardTxs = cardTxs.filter(isExternalStatTx);
+      const income  = statRegular.filter(t => t.type === "income").reduce((s,t) => s+t.amount, 0);
+      const expense = statRegular.filter(t => t.type === "expense").reduce((s,t) => s+t.amount, 0)
+                    + statCardTxs.reduce((s,t) => s+(t.type==="expense"?t.amount:-t.amount), 0);
+      const balance = income - expense;
+      const statTxs = [...statRegular, ...statCardTxs];
+      const total   = statTxs.length;
+      const pointed = statTxs.filter(t => t.pointed).length;
+      return { accountId: acc.id, accountName: acc.name, income, expense, balance, total, pointed };
     });
   }, [store.transactions, accountId, checkingAccounts, nowMk]);
 
@@ -5097,8 +5171,8 @@ function CheckingStats({ store, onBack }) {
   // ── Indicateurs jours ──────────────────────────────────────────────────
   const daysInMonth  = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const dayOfMonth   = today.getDate();
-  const daysLeft     = daysInMonth - dayOfMonth;
-  const avgDailyExp  = daysInMonth > 0 ? currentLive.expense / daysInMonth : 0;
+  const daysLeft     = daysInMonth - dayOfMonth + 1;
+  const avgDailyExp  = dayOfMonth > 0 ? currentLive.expense / dayOfMonth : 0;
   const eurPerDayLeft = currentLive.balance > 0 ? currentLive.balance / Math.max(daysLeft, 1) : 0;
 
   // ── Taux de pointage mois en cours ────────────────────────────────────
@@ -5109,7 +5183,7 @@ function CheckingStats({ store, onBack }) {
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)" }}>
       {/* Header */}
-      <div style={{ background:"var(--header-bg)", padding: COMPACT_STICKY_HEADER ? "calc(8px + env(safe-area-inset-top, 0px)) 16px 8px" : "16px 20px", borderBottom:"1px solid var(--border)", ...(COMPACT_STICKY_HEADER ? { position:"sticky", top:0, zIndex:50, backdropFilter:"blur(20px)" } : {}) }}>
+      <div style={{ background:"var(--header-bg)", padding: COMPACT_STICKY_HEADER ? "8px 16px" : "16px 20px", borderBottom:"1px solid var(--border)", ...(COMPACT_STICKY_HEADER ? { position:"sticky", top:0, zIndex:50, backdropFilter:"blur(20px)" } : {}) }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <button onClick={onBack} style={{ background:"var(--header-btn-bg)", border:"1px solid var(--header-btn-border)", borderRadius:8, padding: COMPACT_STICKY_HEADER ? "4px 10px" : "6px 12px", color:"var(--header-muted)", fontSize:13, fontWeight:500 }}>← Retour</button>
           <p style={{ fontFamily:"'DM Serif Display',serif", fontSize: COMPACT_STICKY_HEADER ? 18 : 26, letterSpacing:"-0.02em", color:"var(--header-text)" }}>Statistiques comptes courants</p>
@@ -5142,7 +5216,7 @@ function CheckingStats({ store, onBack }) {
           {[
             { label:"Revenus",  value:currentLive.income,  color:"var(--green)", spark:sparkIncome  },
             { label:"Dépenses", value:currentLive.expense, color:"var(--red)",   spark:sparkExpense },
-            { label:"Solde net",value:currentLive.balance, color:currentLive.balance>=0?"var(--gold)":"var(--red)", spark:sparkBalance },
+            { label:"Résultat mois",value:currentLive.balance, color:currentLive.balance>=0?"var(--gold)":"var(--red)", spark:sparkBalance },
           ].map(c => (
             <div key={c.label} style={{ background:"var(--surface)", borderRadius:10, padding:"10px 12px", border:"1px solid var(--border)" }}>
               <p style={{ fontSize:10, color:"var(--text-sub)", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{c.label}</p>
@@ -5180,7 +5254,7 @@ function CheckingStats({ store, onBack }) {
           <div style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:10, padding:"12px 14px" }}>
             <p style={{ fontSize:10, fontWeight:600, color:"var(--text-sub)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Dépense / jour</p>
             <p style={{ fontFamily:"'DM Serif Display',serif", fontSize:22, fontWeight:700, color:"var(--red)", marginBottom:2 }}>{fmtEur(avgDailyExp)}</p>
-            <p style={{ fontSize:10, color:"var(--text-muted)" }}>Sur {daysInMonth}j du mois</p>
+            <p style={{ fontSize:10, color:"var(--text-muted)" }}>Sur {dayOfMonth}j écoulé{dayOfMonth>1?"s":""}</p>
           </div>
 
           {/* Euros restants / jour */}
@@ -5204,7 +5278,7 @@ function CheckingStats({ store, onBack }) {
               ? <p style={{ fontSize:12, color:"var(--text-muted)" }}>Pas encore d'historique</p>
               : <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
                   {[
-                    { label:"Solde",    diff: diffBalance },
+                    { label:"Résultat", diff: diffBalance },
                     { label:"Revenus",  diff: diffIncome  },
                     { label:"Dépenses", diff: -diffExpense }, // moins de dépenses = positif
                   ].map(row => (
@@ -5568,7 +5642,7 @@ function SavingsStats({ store, onBack }) {
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)" }}>
       {/* Header */}
-      <div style={{ background:"var(--header-bg)", padding: COMPACT_STICKY_HEADER ? "calc(8px + env(safe-area-inset-top, 0px)) 16px 8px" : "16px 20px", borderBottom:"1px solid var(--border)", ...(COMPACT_STICKY_HEADER ? { position:"sticky", top:0, zIndex:50, backdropFilter:"blur(20px)" } : {}) }}>
+      <div style={{ background:"var(--header-bg)", padding: COMPACT_STICKY_HEADER ? "8px 16px" : "16px 20px", borderBottom:"1px solid var(--border)", ...(COMPACT_STICKY_HEADER ? { position:"sticky", top:0, zIndex:50, backdropFilter:"blur(20px)" } : {}) }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <button onClick={onBack} style={{ background:"var(--header-btn-bg)", border:"1px solid var(--header-btn-border)", borderRadius:8, padding: COMPACT_STICKY_HEADER ? "4px 10px" : "6px 12px", color:"var(--header-muted)", fontSize:13, fontWeight:500 }}>← Retour</button>
           <p style={{ fontFamily:"'DM Serif Display',serif", fontSize: COMPACT_STICKY_HEADER ? 18 : 26, letterSpacing:"-0.02em", color:"var(--header-text)" }}>Statistiques épargne</p>
