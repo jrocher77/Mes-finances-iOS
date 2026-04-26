@@ -152,10 +152,12 @@
     @keyframes fadeUp  { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
     @keyframes slideIn { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
     @keyframes scaleIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
+    @keyframes sheetIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
     @keyframes spin    { to { transform: rotate(360deg); } }
     .fade-up  { animation: fadeUp  0.4s ease both; }
     .slide-in { animation: slideIn 0.3s ease both; }
     .scale-in { animation: scaleIn 0.25s ease both; }
+    .sheet-in { animation: sheetIn 0.18s ease-out both; }
     .spinner  { animation: spin 0.9s linear infinite; }
 
     .form-modal-overlay {
@@ -186,6 +188,7 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
+      transform: translateZ(0);
       padding: 0 0 max(24px, calc(24px + env(safe-area-inset-bottom)));
     }
 
@@ -4861,7 +4864,7 @@ function FormModal({ store, account, transaction, onClose, isCardTransaction=fal
   return (
     <div className="form-modal-overlay"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="form-modal-sheet scale-in">
+      <div className="form-modal-sheet sheet-in">
         <div className="form-modal-header">
           <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 0" }}>
             <div style={{ width:36,height:4, borderRadius:2, background:"var(--border)" }} />
