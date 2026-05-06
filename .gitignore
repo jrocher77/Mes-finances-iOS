@@ -45,3 +45,5 @@ playground.xcworkspace
 # Project-specific ignores
 /MIGRATION_IOS.md
 /AGENTS.md
+/Mes Finances iOS/GoogleService-Info.plist
+/Mes Finances iOS/firebase-config.local.js

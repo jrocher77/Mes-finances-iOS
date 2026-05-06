@@ -53,6 +53,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- Firebase -->
+  <script src="./firebase-config.local.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
@@ -60,15 +61,11 @@
     import { getFirestore, doc, getDoc, setDoc, onSnapshot, deleteField }
       from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyDi5L92rZkehT514a5-JDqjTdOMc1_Ee8o",
-      authDomain: "monbudget-207b8.firebaseapp.com",
-      projectId: "monbudget-207b8",
-      storageBucket: "monbudget-207b8.firebasestorage.app",
-      messagingSenderId: "686570690847",
-      appId: "1:686570690847:web:9634102ee6e5481a12f82a",
-      measurementId: "G-66CK2ZJB89"
-    };
+    const firebaseConfig = window.MonBudgetFirebaseConfig;
+
+    if (!firebaseConfig?.apiKey) {
+      throw new Error("Configuration Firebase absente. Copiez firebase-config.sample.js vers firebase-config.local.js et renseignez les valeurs Firebase locales.");
+    }
 
     const app  = initializeApp(firebaseConfig);
     const auth = getAuth(app);
