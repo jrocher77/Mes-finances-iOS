@@ -10,6 +10,7 @@ import SwiftUI
 struct NativeDashboardView: View {
     @ObservedObject var store: NativeFinanceStore
     @State private var selectedMonth = FinanceCalculations.currentMonthKey()
+    @State private var route: NativeDashboardRoute?
 
     private var months: [String] {
         FinanceCalculations.visibleDashboardMonths(
@@ -64,6 +65,20 @@ struct NativeDashboardView: View {
     }
 
     var body: some View {
+        if route == .checkingStats {
+            NativeCheckingStatsView(store: store) {
+                route = nil
+            }
+        } else if route == .savingsStats {
+            NativeSavingsStatsView(store: store) {
+                route = nil
+            }
+        } else {
+            dashboardBody
+        }
+    }
+
+    private var dashboardBody: some View {
         ZStack {
             NativeTheme.background.ignoresSafeArea()
 
@@ -148,7 +163,9 @@ struct NativeDashboardView: View {
                     }
                 }
 
-                StatsButton(title: "Statistiques comptes courants", icon: "chart.bar", color: NativeTheme.green)
+                StatsButton(title: "Statistiques comptes courants", icon: "chart.bar", color: NativeTheme.green) {
+                    route = .checkingStats
+                }
                     .padding(.top, 8)
             }
 
@@ -171,7 +188,9 @@ struct NativeDashboardView: View {
                     }
                 }
 
-                StatsButton(title: "Statistiques epargne", icon: "chart.line.uptrend.xyaxis", color: NativeTheme.gold)
+                StatsButton(title: "Statistiques epargne", icon: "chart.line.uptrend.xyaxis", color: NativeTheme.gold) {
+                    route = .savingsStats
+                }
                     .padding(.top, 8)
             }
 
@@ -246,6 +265,11 @@ struct NativeDashboardView: View {
         formatter.dateFormat = "MMM yy"
         return formatter.string(from: date).replacingOccurrences(of: ".", with: "")
     }
+}
+
+private enum NativeDashboardRoute {
+    case checkingStats
+    case savingsStats
 }
 
 private enum DashboardAccountKind {
@@ -323,10 +347,10 @@ private struct StatsButton: View {
     var title: String
     var icon: String
     var color: Color
+    var action: () -> Void
 
     var body: some View {
-        Button {
-        } label: {
+        Button(action: action) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .bold))

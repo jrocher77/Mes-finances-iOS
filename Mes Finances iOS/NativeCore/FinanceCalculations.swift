@@ -129,29 +129,11 @@ enum FinanceCalculations {
         transactions: [FinanceTransaction],
         takenAt dateString: String
     ) -> CheckingSnapshot? {
-        let regular = transactions.filter {
-            Self.monthKey(for: $0.date) == monthKey &&
-            $0.accountId == account.id &&
-            $0.isCard != true
-        }
-        let card = transactions.filter {
-            Self.monthKey(for: $0.date) == monthKey &&
-            $0.accountId == account.id &&
-            $0.isCard == true
-        }
-
-        guard !regular.isEmpty || !card.isEmpty else { return nil }
-
-        let income = regular
-            .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
-        let regularExpense = regular
-            .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
-        let cardExpense = card.reduce(0) { total, transaction in
-            total + (transaction.type == .expense ? transaction.amount : -transaction.amount)
-        }
-        let all = regular + card
+        guard let stats = checkingStats(
+            transactions: transactions,
+            accountId: account.id,
+            monthKey: monthKey
+        ) else { return nil }
 
         return CheckingSnapshot(
             id: UUID().uuidString,
@@ -159,13 +141,77 @@ enum FinanceCalculations {
             monthKey: monthKey,
             accountId: account.id,
             accountName: account.name,
-            income: income,
-            expense: regularExpense + cardExpense,
-            balance: income - regularExpense - cardExpense,
-            total: all.count,
-            pointed: all.filter(\.pointed).count,
+            income: stats.income,
+            expense: stats.expense,
+            balance: stats.balance,
+            total: stats.total,
+            pointed: stats.pointed,
             auto: true
         )
+    }
+
+    nonisolated static func isExternalStatTransaction(_ transaction: FinanceTransaction) -> Bool {
+        transaction.transferFromMonthKey == nil && transaction.transferPairId == nil
+    }
+
+    nonisolated static func checkingStats(
+        transactions: [FinanceTransaction],
+        accountId: String,
+        monthKey: String
+    ) -> CheckingStatsResult? {
+        let regular = transactions.filter {
+            Self.monthKey(for: $0.date) == monthKey &&
+            $0.accountId == accountId &&
+            $0.isCard != true
+        }
+        let cardTransactions = transactions.filter {
+            Self.monthKey(for: $0.date) == monthKey &&
+            $0.accountId == accountId &&
+            $0.isCard == true
+        }
+
+        guard !regular.isEmpty || !cardTransactions.isEmpty else { return nil }
+
+        let statRegular = regular.filter(isExternalStatTransaction)
+        let statCardTransactions = cardTransactions.filter(isExternalStatTransaction)
+        let income = statRegular
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + $1.amount }
+        let expense = statRegular
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.amount }
+        + statCardTransactions.reduce(0) { total, transaction in
+            total + (transaction.type == .expense ? transaction.amount : -transaction.amount)
+        }
+        let statTransactions = statRegular + statCardTransactions
+
+        return CheckingStatsResult(
+            income: income,
+            expense: expense,
+            balance: income - expense,
+            total: statTransactions.count,
+            pointed: statTransactions.filter(\.pointed).count,
+            rawTotal: regular.count + cardTransactions.count
+        )
+    }
+
+    nonisolated static func aggregateCheckingStats(
+        transactions: [FinanceTransaction],
+        accountIds: [String],
+        monthKey: String
+    ) -> CheckingStatsResult {
+        accountIds
+            .compactMap { checkingStats(transactions: transactions, accountId: $0, monthKey: monthKey) }
+            .reduce(CheckingStatsResult.empty) { result, item in
+                CheckingStatsResult(
+                    income: result.income + item.income,
+                    expense: result.expense + item.expense,
+                    balance: result.balance + item.balance,
+                    total: result.total + item.total,
+                    pointed: result.pointed + item.pointed,
+                    rawTotal: result.rawTotal + item.rawTotal
+                )
+            }
     }
 
     nonisolated static func savingsTotals(accounts: [FinanceAccount]) -> (available: Double, blocked: Double) {
@@ -344,4 +390,22 @@ enum FinanceCalculations {
 
         return reasons
     }
+}
+
+nonisolated struct CheckingStatsResult: Equatable {
+    var income: Double
+    var expense: Double
+    var balance: Double
+    var total: Int
+    var pointed: Int
+    var rawTotal: Int
+
+    static let empty = CheckingStatsResult(
+        income: 0,
+        expense: 0,
+        balance: 0,
+        total: 0,
+        pointed: 0,
+        rawTotal: 0
+    )
 }
