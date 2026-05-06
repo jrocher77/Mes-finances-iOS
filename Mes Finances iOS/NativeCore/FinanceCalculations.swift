@@ -33,6 +33,18 @@ enum FinanceCalculations {
         return "\(year)-\(String(format: "%02d", month - 1))"
     }
 
+    nonisolated static func nextMonthKey(_ monthKey: String) -> String {
+        let parts = monthKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return monthKey }
+
+        let year = parts[0]
+        let month = parts[1]
+        if month == 12 {
+            return "\(year + 1)-01"
+        }
+        return "\(year)-\(String(format: "%02d", month + 1))"
+    }
+
     nonisolated static func isEvenMonth(_ monthKey: String) -> Bool {
         let parts = monthKey.split(separator: "-")
         guard parts.count == 2, let month = Int(parts[1]) else { return false }
@@ -166,6 +178,102 @@ enum FinanceCalculations {
             .reduce(0) { $0 + $1.balance }
 
         return (available, blocked)
+    }
+
+    nonisolated static func visibleDashboardMonths(
+        transactions: [FinanceTransaction],
+        cardDebitDates: [String: [String: String]],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [String] {
+        let currentKey = currentMonthKey(date: today, calendar: calendar)
+        let previousKey = previousMonthKey(currentKey)
+        var months: [String] = []
+
+        let hasNonDeferredPreviousTransactions = transactions.contains { transaction in
+            guard monthKey(for: transaction.date) == previousKey else { return false }
+            if transaction.isCard == true,
+               let debitDate = cardDebitDates[transaction.accountId]?[previousKey],
+               monthKey(for: debitDate) >= currentKey {
+                return false
+            }
+            return true
+        }
+
+        if hasNonDeferredPreviousTransactions {
+            months.append(previousKey)
+        }
+
+        let nextKey = nextMonthKey(currentKey)
+        months.append(currentKey)
+        months.append(nextKey)
+        months.append(nextMonthKey(nextKey))
+        return months
+    }
+
+    nonisolated static func displayBalance(
+        account: FinanceAccount,
+        monthKey: String,
+        transactions: [FinanceTransaction],
+        cardDebitDates: [String: [String: String]]
+    ) -> Double {
+        switch account.type {
+        case .checking:
+            let regular = transactions.filter {
+                Self.monthKey(for: $0.date) == monthKey &&
+                $0.accountId == account.id &&
+                $0.isCard != true
+            }
+            let regularBalance = balance(for: regular)
+            let cardTotal = transactions
+                .filter {
+                    $0.isCard == true &&
+                    $0.accountId == account.id &&
+                    Self.monthKey(for: $0.date) == monthKey
+                }
+                .reduce(0) { total, transaction in
+                    total + (transaction.type == .expense ? transaction.amount : -transaction.amount)
+                }
+            let syntheticDebitTotal = (cardDebitDates[account.id] ?? [:]).reduce(0) { total, entry in
+                let sourceMonth = entry.key
+                let debitDate = entry.value
+                guard !debitDate.isEmpty, Self.monthKey(for: debitDate) == monthKey, sourceMonth != monthKey else {
+                    return total
+                }
+
+                let sourceTotal = transactions
+                    .filter {
+                        $0.isCard == true &&
+                        $0.accountId == account.id &&
+                        Self.monthKey(for: $0.date) == sourceMonth
+                    }
+                    .reduce(0) { sum, transaction in
+                        sum + (transaction.type == .expense ? transaction.amount : -transaction.amount)
+                    }
+                return total + sourceTotal
+            }
+            return regularBalance - cardTotal - syntheticDebitTotal
+        case .savings:
+            return account.balance
+        case .benefit:
+            return 0
+        case .other:
+            return 0
+        }
+    }
+
+    nonisolated static func benefitAvailableBalance(
+        accountId: String,
+        monthKey: String,
+        benefitData: [String: BenefitAccountData]
+    ) -> Double {
+        let data = benefitData[accountId] ?? BenefitAccountData()
+        let carry = carryOver(for: data, upToMonthKey: monthKey)
+        let allotted = allotmentAmount(data.allotments[monthKey])
+        let spent = data.expenses
+            .filter { Self.monthKey(for: $0.date) == monthKey }
+            .reduce(0) { $0 + $1.amount }
+        return carry + allotted - spent
     }
 
     nonisolated static func carryOver(for accountData: BenefitAccountData, upToMonthKey monthKey: String) -> Double {
